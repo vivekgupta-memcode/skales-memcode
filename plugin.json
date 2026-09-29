@@ -6,7 +6,9 @@
   "description": "Lets users explicitly save and recall personal MemCode memories through a signed-in MCP connection.",
   "author": "Vivek Gupta, MemCode",
   "class": "page",
-  "platforms": ["desktop"],
+  "platforms": [
+    "desktop"
+  ],
   "permissions": {
     "network": true,
     "filesystem": "none",
@@ -24,5 +26,6 @@
     "vendor": "MemCode"
   },
   "repo": "vivekgupta-memcode/skales-memcode",
-  "homepage": "https://memcode.in/docs"
+  "homepage": "https://memcode.in/docs",
+  "addedAt": "2026-09-29"
 }
