@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MemCode Memory</title>
+  <style>
+    :root { --sk-bg:#f7f7f7; --sk-surface:#fff; --sk-line:#d7d7d7; --sk-text:#202020; --sk-muted:#626262; --sk-accent:#385ac6; --sk-accent-text:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px; background:var(--sk-bg); color:var(--sk-text); font-family:inherit; line-height:1.5; }
+    main { max-width:760px; margin:auto; }
+    h1 { margin:0 0 6px; font-size:1.7rem; }
+    h2 { margin:0 0 12px; font-size:1.15rem; }
+    p { margin:0 0 12px; }
+    section { margin:18px 0; padding:18px; border:1px solid var(--sk-line); border-radius:12px; background:var(--sk-surface); }
+    label { display:block; margin:10px 0 6px; font-weight:600; }
+    textarea,input { width:100%; padding:10px; border:1px solid var(--sk-line); border-radius:7px; background:var(--sk-bg); color:var(--sk-text); font:inherit; }
+    textarea { min-height:96px; resize:vertical; }
+    button { margin-top:10px; padding:9px 14px; border:0; border-radius:7px; background:var(--sk-accent); color:var(--sk-accent-text); font:inherit; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:wait; }
+    code,pre { overflow-wrap:anywhere; }
+    pre { white-space:pre-wrap; padding:12px; border:1px solid var(--sk-line); border-radius:7px; background:var(--sk-bg); }
+    .muted { color:var(--sk-muted); }
+    .status { min-height:1.5em; }
+    a { color:var(--sk-accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MemCode Memory</h1>
+  <p class="muted">Save a fact you choose. Search or ask about it later. Nothing is copied from your Skales chats or local memory automatically.</p>
+  <section aria-labelledby="setup-title">
+    <h2 id="setup-title">Connect once</h2>
+    <p>In Skales, enable the MCP Servers add-on, then open <strong>Settings → Extensions → MCP servers</strong>. Add a remote HTTP server named <code>memcode</code> with URL <code>https://mcp.memcode.in/mcp</code>. Enable OAuth and complete the browser sign-in. Do not enter an API key in this page.</p>
+    <p class="muted">The server name matters: Skales exposes its tools as <code>mcp_memcode_*</code>. The connection and authorization are managed by Skales.</p>
+  </section>
+  <section aria-labelledby="save-title">
+    <h2 id="save-title">Save a memory</h2>
+    <label for="memory-text">Fact, preference, or decision</label>
+    <textarea id="memory-text" maxlength="20000" placeholder="For example: I prefer morning meetings."></textarea>
+    <button type="button" id="save">Save this text</button>
+    <p id="save-status" class="status" role="status" aria-live="polite"></p>
+    <label for="job-id">Ingest job ID</label>
+    <input id="job-id" autocomplete="off" spellcheck="false" placeholder="Returned after saving">
+    <button type="button" id="check">Check save status</button>
+    <p id="job-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+  <section aria-labelledby="recall-title">
+    <h2 id="recall-title">Recall</h2>
+    <label for="query">Question or search terms</label>
+    <input id="query" maxlength="5000" placeholder="What time do I prefer for meetings?">
+    <button type="button" id="search">Search memories</button>
+    <button type="button" id="answer">Get a grounded answer</button>
+    <p id="recall-status" class="status" role="status" aria-live="polite"></p>
+    <pre id="result" aria-live="polite"></pre>
+  </section>
+  <p class="muted">MemCode is a separate hosted service with a free tier and paid plans. <a href="https://memcode.in/memory">Plans</a> · <a href="https://memcode.in/docs">Docs</a></p>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const tools = {
+    save: 'mcp_memcode_save_memory',
+    check: 'mcp_memcode_get_memory_ingest_status',
+    search: 'mcp_memcode_search_memories',
+    answer: 'mcp_memcode_retrieve_answer'
+  };
+  function asText(value) {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(asText).join('\n');
+    if (value && typeof value === 'object') {
+      if (Array.isArray(value.content)) return asText(value.content);
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.result === 'string') return value.result;
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value ?? '');
+  }
+  async function run(button, status, name, args) {
+    if (!window.skales?.tools?.run) {
+      status.textContent = 'Open this page inside Skales to use the connected tools.';
+      return null;
+    }
+    button.disabled = true;
+    status.textContent = 'Waiting for Skales…';
+    try {
+      const result = await window.skales.tools.run(name, args);
+      const output = asText(result);
+      status.textContent = 'Request completed.';
+      return output;
+    } catch (error) {
+      status.textContent = 'Could not call the tool. Check that the memcode MCP server is connected and this plugin has permission for it.';
+      return null;
+    } finally {
+      button.disabled = false;
+    }
+  }
+  $('save').addEventListener('click', async () => {
+    const text = $('memory-text').value.trim();
+    if (!text) { $('save-status').textContent = 'Enter a memory before saving.'; return; }
+    const output = await run($('save'), $('save-status'), tools.save, { text, effort_level:'low' });
+    if (output === null) return;
+    $('save-status').textContent = output;
+    const match = output.match(/job_id=([^,\s)]+)/);
+    if (match) $('job-id').value = match[1];
+  });
+  $('check').addEventListener('click', async () => {
+    const jobId = $('job-id').value.trim();
+    if (!jobId) { $('job-status').textContent = 'Enter the job ID from the save receipt.'; return; }
+    const output = await run($('check'), $('job-status'), tools.check, { job_id:jobId });
+    if (output !== null) $('job-status').textContent = output;
+  });
+  for (const kind of ['search','answer']) {
+    $(kind).addEventListener('click', async () => {
+      const query = $('query').value.trim();
+      if (!query) { $('recall-status').textContent = 'Enter a question or search terms.'; return; }
+      const args = kind === 'search' ? { query, mode:'memories', top_k:10 } : { query, top_k:5 };
+      const output = await run($(kind), $('recall-status'), tools[kind], args);
+      if (output !== null) $('result').textContent = output;
+    });
+  }
+})();
+</script>
+</body>
+</html>
